@@ -1,0 +1,184 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+spec:
+  type: NodePort
+  selector:
+    app: postgres
+  ports:
+  - port: 5432
+    nodePort: 30000
+--- 
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+spec:
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      volumes:
+        - name: init-db-config-map
+          configMap:
+            name: db-init
+      containers:
+        - name: postgres
+          image: postgres:9
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-secret
+                  key: password
+          resources:
+            limits:
+              memory: "256Mi"
+              cpu: "250m"
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: init-db-config-map
+              mountPath: /docker-entrypoint-initdb.d
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: db-init
+data:
+  init.sql: |
+    --drop tables
+    drop table if exists public.category;
+    drop table if exists public.category_type;
+    drop table if exists public.account;
+    drop table if exists public.currency;
+    drop table if exists public.account_type;
+    drop table if exists public.users;
+
+
+    CREATE TABLE public.category_type (
+      category_type_id SERIAL primary key,
+      category_type_name varchar NOT NULL
+    );
+
+    CREATE TABLE public.category (
+      category_id SERIAL  primary key,
+      category_type_id integer not null references public.category_type(category_type_id),	
+      category_name varchar NOT NULL
+    );
+
+    CREATE TABLE users (
+      userid text primary key,
+      email text not null,
+      creation_date date not null default CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE account_type (
+      account_type_id SERIAL primary key,
+      description text not null unique,
+      creation_date date not null default CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE currency (
+      currency_id SERIAL primary key, 
+      description text not null unique,
+      creation_date date not null default CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE account (
+      account_id SERIAL primary key,
+      description text not null,
+      account_type_id integer not null references account_type(account_type_id),
+      currency_id integer not null references currency(currency_id),
+      userid text not null references users(userid),
+      creation_date date not null default CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE transaction_type (
+      transaction_type_id SERIAL primary key,
+      description text not null unique,
+      creation_date date not null default CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE transactions (
+      transaction_id SERIAL primary key,
+      description text not null,
+      transaction_value float not null,
+      transaction_date date not null default CURRENT_TIMESTAMP,
+      transaction_type_id integer not null references public.transaction_type(transaction_type_id),
+      account_id integer not null references public.account(account_id),
+      category_id integer not null references public.category(category_id)
+    );
+
+
+
+    --insert
+    INSERT INTO public.currency (description) 
+    VALUES ('SVC');
+
+    INSERT INTO public.currency (description) 
+    VALUES ('USD');
+
+    INSERT INTO public.currency (description) 
+    VALUES ('BTC');
+
+    INSERT INTO public.account_type (description) 
+    VALUES ('Cash');
+
+    INSERT INTO public.account_type (description) 
+    VALUES ('Checking');
+
+    INSERT INTO public.account_type (description) 
+    VALUES ('Saving');
+
+    /********************************************************************/
+
+    INSERT INTO public.category_type (category_type_name) 
+    VALUES ('Income');
+
+    INSERT INTO public.category_type (category_type_name) 
+    VALUES ('Expense');
+
+
+    INSERT INTO public.category (category_type_id, category_name) 
+    values ((select category_type_id from public.category_type  where category_type_name ='Income' limit 1), 'Salary');
+
+    INSERT INTO public.category (category_type_id, category_name) 
+    values ((select category_type_id from public.category_type  where category_type_name ='Expense' limit 1), 'Rent');
+
+    INSERT INTO public.category (category_type_id, category_name) 
+    values ((select category_type_id from public.category_type  where category_type_name ='Expense' limit 1), 'Food');
+
+    INSERT INTO public.category (category_type_id, category_name) 
+    values ((select category_type_id from public.category_type  where category_type_name ='Expense' limit 1), 'Transportation');
+
+    INSERT INTO public.category (category_type_id, category_name) 
+    values ((select category_type_id from public.category_type  where category_type_name ='Expense' limit 1), 'Health Care');
+
+    INSERT INTO public.category (category_type_id, category_name) 
+    values ((select category_type_id from public.category_type  where category_type_name ='Expense' limit 1), 'Taxes');
+
+    INSERT INTO public.category (category_type_id, category_name) 
+    values ((select category_type_id from public.category_type  where category_type_name ='Expense' limit 1), 'Telephone');
+
+    /********************************************************************/
+
+    INSERT INTO public.transaction_type (description) 
+    VALUES ('Transfer');
+
+    INSERT INTO public.transaction_type (description) 
+    VALUES ('Record');
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-secret
+data:
+  password: YWRtaW4=
+type: Opaque
